@@ -2,9 +2,11 @@
 
 Designed by Claude AI after being given the requirements : write for pre-existing hardware (as built for [disyn-esp32](https://github.com/danja/disyn-esp32) make it a voice with some kind of wave generation and envelope control. And "Be creative!".
 
+Video:
+
 [![Watch the video](https://img.youtube.com/vi/-fdHzfwwsyY/0.jpg)](https://www.youtube.com/shorts/-fdHzfwwsyY)   
 
-First test it immediately crashed, wrong display libs. After fixing this, second flash, sound came out and most things kind-of worked. 
+First test it immediately crashed, wrong display libs. After fixing this, second flash, sound came out and most things kind-of worked. We've had a few cycles and ironed out a few initial problems. It's *almost* useful. But now I'm out of tokens until 6pm.
 
 What follows was written by Claude.
 
