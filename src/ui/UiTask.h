@@ -6,6 +6,7 @@
 #include "Parameters.h"
 #include "Config.h"
 #include "Calibration.h"
+#include "Utils.h"
 #include "../hal/Adc.h"
 #include "../hal/Encoder.h"
 #include "../hal/Display.h"
@@ -19,7 +20,9 @@ public:
     void init() {
         adc_.init();
         encoder_.init();
-        display_.init();
+        if (!display_.init()) {
+            Serial.println("Display init failed!");
+        }
         gate_.init();
 
         // Initialize parameter values
@@ -138,7 +141,7 @@ private:
         }
 
         if (value) {
-            *value = std::clamp(*value + delta * step, 0.0f, 1.0f);
+            *value = clamp(*value + delta * step, 0.0f, 1.0f);
         }
     }
 

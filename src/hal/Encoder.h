@@ -11,28 +11,49 @@ public:
         pinMode(PIN_ENC_DT, INPUT_PULLUP);
         pinMode(PIN_ENC_SW, INPUT_PULLUP);
 
-        lastClk_ = digitalRead(PIN_ENC_CLK);
+        // Read initial state
+        lastState_ = (digitalRead(PIN_ENC_CLK) << 1) | digitalRead(PIN_ENC_DT);
         lastSw_ = HIGH;
+        accumulator_ = 0;
     }
 
     // Returns rotation delta: -1, 0, or +1
     int8_t readRotation() {
-        int8_t delta = 0;
+        // Read current state of both pins
         int clk = digitalRead(PIN_ENC_CLK);
+        int dt = digitalRead(PIN_ENC_DT);
+        int state = (clk << 1) | dt;
 
-        if (clk != lastClk_) {
+        // Gray code state machine
+        // Valid transitions: 00->01->11->10->00 (CW) or 00->10->11->01->00 (CCW)
+        if (state != lastState_) {
+            // Debounce: only accept if enough time has passed
             unsigned long now = millis();
-            if (now - lastRotTime_ > ENCODER_DEBOUNCE_MS) {
-                int dt = digitalRead(PIN_ENC_DT);
-                if (dt != clk) {
-                    delta = 1;
-                } else {
-                    delta = -1;
+            if (now - lastRotTime_ >= 2) {  // 2ms minimum between transitions
+                // Determine direction from state transition
+                int transition = (lastState_ << 2) | state;
+                switch (transition) {
+                    case 0b0001: case 0b0111: case 0b1110: case 0b1000:
+                        accumulator_++;
+                        break;
+                    case 0b0010: case 0b1011: case 0b1101: case 0b0100:
+                        accumulator_--;
+                        break;
                 }
                 lastRotTime_ = now;
             }
+            lastState_ = state;
         }
-        lastClk_ = clk;
+
+        // Return accumulated clicks (detent = 4 state changes)
+        int8_t delta = 0;
+        if (accumulator_ >= 4) {
+            delta = 1;
+            accumulator_ -= 4;
+        } else if (accumulator_ <= -4) {
+            delta = -1;
+            accumulator_ += 4;
+        }
         return delta;
     }
 
@@ -43,7 +64,7 @@ public:
 
         if (sw == LOW && lastSw_ == HIGH) {
             unsigned long now = millis();
-            if (now - lastSwTime_ > ENCODER_DEBOUNCE_MS) {
+            if (now - lastSwTime_ >= 50) {  // 50ms debounce for button
                 pressed = true;
                 lastSwTime_ = now;
             }
@@ -58,8 +79,9 @@ public:
     }
 
 private:
-    int lastClk_ = HIGH;
+    int lastState_ = 0;
     int lastSw_ = HIGH;
+    int accumulator_ = 0;
     unsigned long lastRotTime_ = 0;
     unsigned long lastSwTime_ = 0;
 };

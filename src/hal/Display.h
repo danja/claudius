@@ -1,28 +1,34 @@
 #pragma once
 
 #include <Wire.h>
-#include <SH1106Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SH110X.h>
 #include "PinConfig.h"
 #include "Parameters.h"
 
 class Display {
 public:
-    void init() {
-        display_.init();
-        display_.flipScreenVertically();
-        display_.setFont(ArialMT_Plain_10);
-        display_.setTextAlignment(TEXT_ALIGN_LEFT);
-        clear();
+    bool init() {
+        Wire.begin(PIN_SDA, PIN_SCL);
+        if (!display_.begin(0x3C, true)) {
+            return false;
+        }
+        display_.clearDisplay();
+        display_.setTextSize(1);
+        display_.setTextColor(SH110X_WHITE);
+        display_.display();
+        return true;
     }
 
     void clear() {
-        display_.clear();
+        display_.clearDisplay();
     }
 
     void showTitle(const char* title) {
-        display_.setFont(ArialMT_Plain_16);
-        display_.setTextAlignment(TEXT_ALIGN_CENTER);
-        display_.drawString(64, 0, title);
+        display_.setTextSize(2);
+        display_.setCursor(10, 0);
+        display_.print(title);
+        display_.setTextSize(1);
     }
 
     void showParameter(ParamIndex param, float normalizedValue, bool selected) {
@@ -48,40 +54,43 @@ public:
             snprintf(buf, sizeof(buf), "%s: %.0f%s", info.name, displayVal, info.unit);
         }
 
-        display_.setFont(ArialMT_Plain_10);
-        display_.setTextAlignment(TEXT_ALIGN_LEFT);
-
-        int y = 20 + static_cast<int>(param) * 11;
+        // Compact layout: title 16px, params start at y=18 with 10px spacing
+        int y = 18 + static_cast<int>(param) * 10;
 
         if (selected) {
-            display_.fillRect(0, y - 1, 128, 11);
-            display_.setColor(BLACK);
+            display_.fillRect(0, y - 1, 128, 10, SH110X_WHITE);
+            display_.setTextColor(SH110X_BLACK);
+        } else {
+            display_.setTextColor(SH110X_WHITE);
         }
 
-        display_.drawString(2, y, buf);
-        display_.setColor(WHITE);
+        display_.setCursor(2, y);
+        display_.print(buf);
+        display_.setTextColor(SH110X_WHITE);
     }
 
     void showStatus(float freq, float level, bool playing) {
         char buf[32];
 
-        // Show frequency
-        display_.setFont(ArialMT_Plain_10);
-        display_.setTextAlignment(TEXT_ALIGN_RIGHT);
-        snprintf(buf, sizeof(buf), "%.1fHz", freq);
-        display_.drawString(126, 54, buf);
-
+        // Status line at bottom (y=56)
         // Show playing indicator
         if (playing) {
-            display_.fillCircle(6, 58, 4);
+            display_.fillCircle(6, 60, 3, SH110X_WHITE);
         } else {
-            display_.drawCircle(6, 58, 4);
+            display_.drawCircle(6, 60, 3, SH110X_WHITE);
         }
 
         // Show level bar
-        int barWidth = static_cast<int>(level * 40.0f);
-        display_.drawRect(20, 56, 42, 6);
-        display_.fillRect(21, 57, barWidth, 4);
+        int barWidth = static_cast<int>(level * 36.0f);
+        display_.drawRect(14, 57, 38, 6, SH110X_WHITE);
+        if (barWidth > 0) {
+            display_.fillRect(15, 58, barWidth, 4, SH110X_WHITE);
+        }
+
+        // Show frequency
+        snprintf(buf, sizeof(buf), "%.0fHz", freq);
+        display_.setCursor(56, 56);
+        display_.print(buf);
     }
 
     void update() {
@@ -89,5 +98,5 @@ public:
     }
 
 private:
-    SH1106Wire display_{0x3c, PIN_SDA, PIN_SCL};
+    Adafruit_SH1106G display_{128, 64, &Wire};
 };

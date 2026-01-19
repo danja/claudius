@@ -3,9 +3,9 @@
 // Claudius - Hardware pin assignments
 // Based on ESP32 DevKit V1 DOIT module
 
-// DAC outputs
-constexpr int PIN_DAC1 = 25;
-constexpr int PIN_DAC2 = 26;
+// DAC outputs (named to avoid ESP32 macro conflicts)
+constexpr int DAC_PIN_1 = 25;
+constexpr int DAC_PIN_2 = 26;
 
 // Display I2C
 constexpr int PIN_SDA = 21;

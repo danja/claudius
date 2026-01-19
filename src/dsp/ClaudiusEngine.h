@@ -4,7 +4,7 @@
 #include "Envelope.h"
 #include "Config.h"
 #include "Parameters.h"
-#include <algorithm>
+#include "Utils.h"
 
 // Main synthesis engine for Claudius
 // Combines HarmonicCascade oscillator with Envelope
@@ -25,7 +25,7 @@ public:
     }
 
     void setFrequency(float freq) {
-        frequency_ = std::clamp(freq, MIN_FREQ, MAX_FREQ);
+        frequency_ = clamp(freq, MIN_FREQ, MAX_FREQ);
         oscillator_.setFrequency(frequency_);
     }
 
@@ -38,19 +38,19 @@ public:
     }
 
     void setHarmonicSpread(float normalized) {
-        harmonicSpread_ = std::clamp(normalized, 0.0f, 1.0f);
+        harmonicSpread_ = clamp(normalized, 0.0f, 1.0f);
     }
 
     void setCascadeRate(float normalized) {
-        cascadeRate_ = std::clamp(normalized, 0.0f, 1.0f);
+        cascadeRate_ = clamp(normalized, 0.0f, 1.0f);
     }
 
     void setWavefold(float normalized) {
-        wavefold_ = std::clamp(normalized, 0.0f, 1.0f);
+        wavefold_ = clamp(normalized, 0.0f, 1.0f);
     }
 
     void setChaos(float normalized) {
-        chaos_ = std::clamp(normalized, 0.0f, 1.0f);
+        chaos_ = clamp(normalized, 0.0f, 1.0f);
     }
 
     void gate(bool on) {
@@ -99,7 +99,7 @@ public:
         if (!std::isfinite(sample)) {
             sample = 0.0f;
         }
-        sample = std::clamp(sample, -SAMPLE_GUARD, SAMPLE_GUARD);
+        sample = clamp(sample, -SAMPLE_GUARD, SAMPLE_GUARD);
 
         // Update smoothed level for metering
         float absSample = fabsf(sample);
@@ -117,7 +117,8 @@ public:
     }
 
     float getOutputLevel() const {
-        return std::min(1.0f, smoothedLevel_ * 2.0f);
+        float level = smoothedLevel_ * 2.0f;
+        return level < 1.0f ? level : 1.0f;
     }
 
 private:

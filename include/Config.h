@@ -19,7 +19,7 @@ constexpr float MIN_DECAY = 0.01f;
 constexpr float MAX_DECAY = 8.0f;
 
 // Modulation amounts
-constexpr float CV_MOD_AMOUNT = 0.5f;
+constexpr float CV_MOD_AMOUNT = 1.0f;  // Full range CV modulation
 constexpr float PITCH_SMOOTH_ALPHA = 0.3f;
 constexpr float PARAM_SMOOTH_ALPHA = 0.1f;
 

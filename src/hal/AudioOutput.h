@@ -1,36 +1,58 @@
 #pragma once
 
-#include <Arduino.h>
-#include "PinConfig.h"
+#include <cstddef>
+#include <cstdint>
+#include <driver/i2s.h>
+#include "Config.h"
 
 class AudioOutput {
 public:
-    void init() {
-        // ESP32 DAC outputs are 8-bit (0-255)
-        // Pins 25 and 26 are the built-in DAC channels
+    bool init() {
+        i2s_config_t config{};
+        config.mode = static_cast<i2s_mode_t>(I2S_MODE_MASTER | I2S_MODE_TX | I2S_MODE_DAC_BUILT_IN);
+        config.sample_rate = SAMPLE_RATE;
+        config.bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT;
+        config.channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT;
+        config.communication_format = I2S_COMM_FORMAT_STAND_MSB;
+        config.intr_alloc_flags = 0;
+        config.dma_buf_count = 8;
+        config.dma_buf_len = AUDIO_BLOCK_SIZE;
+        config.use_apll = false;
+        config.tx_desc_auto_clear = true;
+        config.fixed_mclk = 0;
+
+        if (i2s_driver_install(I2S_NUM_0, &config, 0, nullptr) != ESP_OK) {
+            return false;
+        }
+
+        if (i2s_set_pin(I2S_NUM_0, nullptr) != ESP_OK) {
+            return false;
+        }
+
+        if (i2s_set_dac_mode(I2S_DAC_CHANNEL_BOTH_EN) != ESP_OK) {
+            return false;
+        }
+
+        return true;
     }
 
-    // Write stereo sample pair
-    // Input range: -1.0 to 1.0
-    void write(float left, float right) {
-        dacWrite(PIN_DAC1, floatToDac(left));
-        dacWrite(PIN_DAC2, floatToDac(right));
+    // Write a buffer of samples
+    // buffer: array of 16-bit samples (interleaved L/R for stereo)
+    // length: size in bytes
+    bool write(const uint16_t* buffer, size_t length, size_t* bytesWritten) {
+        return i2s_write(I2S_NUM_0, buffer, length, bytesWritten, portMAX_DELAY) == ESP_OK;
     }
 
-    // Write mono to both channels
-    void writeMono(float sample) {
-        uint8_t dac = floatToDac(sample);
-        dacWrite(PIN_DAC1, dac);
-        dacWrite(PIN_DAC2, dac);
-    }
-
-private:
-    static uint8_t floatToDac(float sample) {
+    // Convert float sample to DAC format
+    // Input: -1.0 to 1.0
+    // Output: 16-bit value for I2S DAC
+    static uint16_t floatToSample(float sample) {
         // Clamp to valid range
-        sample = constrain(sample, -1.0f, 1.0f);
-        // Convert bipolar to unipolar
+        if (sample < -1.0f) sample = -1.0f;
+        if (sample > 1.0f) sample = 1.0f;
+        // Convert to unsigned 16-bit (DAC expects unsigned)
+        // The internal DAC uses the upper 8 bits
         float unipolar = (sample + 1.0f) * 0.5f;
-        // Scale to 8-bit
-        return static_cast<uint8_t>(unipolar * 255.0f);
+        return static_cast<uint16_t>(unipolar * 65535.0f);
     }
 };

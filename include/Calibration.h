@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <algorithm>
+#include "Utils.h"
 
 // ADC calibration for CV and potentiometer inputs
 
@@ -28,7 +28,7 @@ inline float normalizeAdc(uint16_t value, const AdcCalibration& cal) {
     float normalized = static_cast<float>(value - cal.minValue) / range;
     if (cal.invert) normalized = 1.0f - normalized;
 
-    return std::clamp(normalized, 0.0f, 1.0f);
+    return clamp(normalized, 0.0f, 1.0f);
 }
 
 // Exponential mapping for time parameters (attack, decay)
