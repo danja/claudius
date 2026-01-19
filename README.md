@@ -1,6 +1,6 @@
 # I, Claudius
 
-Designed by Claude AI after being given the requirements : write for pre-existing hardware (as built for [disyn-esp32](https://github.com/danja/disyn-esp32) make it a voice with some kind of wave generation and envelope control. And "Be creative!".
+Designed by Claude AI after being given the requirements : write for pre-existing hardware (as built for [disyn-esp32](https://github.com/danja/disyn-esp32)) make it a complete voice with some kind of wave generation and envelope control. And "Be creative!".
 
 Video:
 
