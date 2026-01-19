@@ -21,10 +21,10 @@ constexpr int PIN_CV0 = 36;  // Harmonic Spread CV
 constexpr int PIN_CV1 = 39;  // Cascade Rate CV
 constexpr int PIN_CV2 = 32;  // Pitch CV
 
-// Potentiometer inputs
-constexpr int PIN_POT0 = 33; // Harmonic Spread knob
+// Potentiometer inputs (matching disyn-esp32 hardware)
+constexpr int PIN_POT0 = 4;  // Harmonic Spread knob
 constexpr int PIN_POT1 = 27; // Cascade Rate knob
-constexpr int PIN_POT2 = 4;  // Pitch knob
+constexpr int PIN_POT2 = 33; // Pitch knob
 
 // Gate I/O
 constexpr int PIN_GATE_IN = 18;

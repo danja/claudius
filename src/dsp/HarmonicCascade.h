@@ -4,16 +4,18 @@
 #include "Config.h"
 #include "Utils.h"
 
-// Claudius: Harmonic Cascade Synthesizer
+// Claudius: Additive Synthesizer with Harmonic Cascade
 //
-// Attempt to see the sea, but the source generates multiple harmonics.
-// Controls should be VERY obvious in their effect.
+// SPREAD: Controls how many harmonics are active (1-8)
+// CASCADE: Controls relative amplitude of higher harmonics
+// WAVEFOLD: Adds distortion/harmonics
+// CHAOS: Vibrato and tremolo
 
 class HarmonicCascade {
 public:
     explicit HarmonicCascade(float sampleRate = SAMPLE_RATE)
         : sampleRate_(sampleRate)
-        , phaseInc_(0.0f)
+        , baseFreq_(220.0f)
     {
         reset();
     }
@@ -21,110 +23,100 @@ public:
     void reset() {
         for (int i = 0; i < MAX_HARMONICS; ++i) {
             phases_[i] = 0.0f;
-            harmonicEnvs_[i] = 1.0f;
         }
-        lfoPhase1_ = 0.0f;
-        lfoPhase2_ = 0.0f;
+        lfoPhase_ = 0.0f;
     }
 
     void setFrequency(float freq) {
-        freq = clamp(freq, MIN_FREQ, MAX_FREQ);
-        phaseInc_ = freq / sampleRate_;
+        baseFreq_ = clamp(freq, MIN_FREQ, MAX_FREQ);
     }
 
     void trigger() {
+        // Reset phases for clean attack
         for (int i = 0; i < MAX_HARMONICS; ++i) {
-            harmonicEnvs_[i] = 1.0f;
+            phases_[i] = 0.0f;
         }
     }
 
-    float process(float harmonicSpread, float cascadeRate,
-                  float wavefold, float chaos, float masterEnv) {
+    float process(float spread, float cascade, float wavefold, float chaos, float envelope) {
+        // LFO for chaos effects (~4 Hz)
+        lfoPhase_ += 4.0f / sampleRate_;
+        if (lfoPhase_ >= 1.0f) lfoPhase_ -= 1.0f;
+        float lfo = sinf(lfoPhase_ * 2.0f * M_PI);
 
-        // LFOs for chaos - faster rates so effect is obvious
-        // LFO1: ~5Hz vibrato
-        lfoPhase1_ += 5.0f / sampleRate_;
-        if (lfoPhase1_ >= 1.0f) lfoPhase1_ -= 1.0f;
-        float lfo1 = sinf(lfoPhase1_ * 2.0f * M_PI);
+        // Vibrato: chaos controls depth (0 to ±5%)
+        float vibratoMult = 1.0f + chaos * lfo * 0.05f;
 
-        // LFO2: ~3Hz tremolo
-        lfoPhase2_ += 3.0f / sampleRate_;
-        if (lfoPhase2_ >= 1.0f) lfoPhase2_ -= 1.0f;
-        float lfo2 = sinf(lfoPhase2_ * 2.0f * M_PI);
+        // Tremolo: chaos controls depth (0 to ±40%)
+        float tremoloMult = 1.0f + chaos * lfo * 0.4f;
+        if (tremoloMult < 0.2f) tremoloMult = 0.2f;
 
         float output = 0.0f;
+        float totalAmp = 0.0f;
 
-        // SPREAD: Controls how many harmonics play
-        // spread=0: only fundamental
-        // spread=0.5: 4 harmonics
-        // spread=1: all 8 harmonics at equal volume
-        int numActive = 1 + static_cast<int>(harmonicSpread * (MAX_HARMONICS - 1));
+        // SPREAD determines how many harmonics (1 to 8)
+        // At spread=0, only fundamental
+        // At spread=1, all 8 harmonics
+        int numHarmonics = 1 + static_cast<int>(spread * 7.0f);
 
-        for (int i = 0; i < numActive; ++i) {
-            int harmonicNum = i + 1;
+        for (int i = 0; i < numHarmonics; ++i) {
+            int harmonic = i + 1;  // 1, 2, 3, 4, 5, 6, 7, 8
 
-            // Base amplitude - spread makes higher harmonics LOUDER
-            // At spread=0, only fundamental plays
-            // At spread=1, all harmonics are equal volume
-            float harmonicAmp;
-            if (i == 0) {
-                harmonicAmp = 1.0f;
+            // CASCADE determines amplitude rolloff
+            // cascade=0: all harmonics equal amplitude
+            // cascade=1: 1/n rolloff (like sawtooth)
+            float ampRolloff;
+            if (cascade < 0.01f) {
+                // No rolloff - all harmonics equal
+                ampRolloff = 1.0f;
             } else {
-                // Higher spread = louder upper harmonics
-                harmonicAmp = harmonicSpread;
+                // Interpolate between equal (1.0) and 1/n
+                float equalAmp = 1.0f;
+                float sawAmp = 1.0f / static_cast<float>(harmonic);
+                ampRolloff = equalAmp * (1.0f - cascade) + sawAmp * cascade;
             }
 
-            // CASCADE: Higher harmonics decay faster
-            // cascade=0: no decay difference
-            // cascade=1: harmonic 8 decays 8x faster than fundamental
-            float decayRate = 0.9997f;  // Base decay ~7ms at 44.1kHz
-            if (cascadeRate > 0.01f && i > 0) {
-                // Faster decay for higher harmonics
-                float speedup = 1.0f + cascadeRate * static_cast<float>(i) * 1.5f;
-                decayRate = powf(decayRate, speedup);
-            }
-            harmonicEnvs_[i] *= decayRate;
+            // Calculate frequency with vibrato
+            float freq = baseFreq_ * static_cast<float>(harmonic) * vibratoMult;
 
-            // CHAOS: Vibrato (pitch wobble) - very obvious
-            // chaos=1 gives ±10% pitch modulation (wide vibrato)
-            float vibrato = 1.0f + chaos * lfo1 * 0.10f;
+            // Anti-aliasing: skip harmonics above Nyquist
+            if (freq > sampleRate_ * 0.45f) continue;
 
-            // CHAOS: Tremolo (volume wobble)
-            // chaos=1 gives ±50% amplitude modulation
-            float tremolo = 1.0f + chaos * lfo2 * 0.5f;
-            if (tremolo < 0.2f) tremolo = 0.2f;
-
-            // Update phase
-            float harmonicPhaseInc = phaseInc_ * harmonicNum * vibrato;
-            phases_[i] += harmonicPhaseInc;
+            // Phase increment
+            float phaseInc = freq / sampleRate_;
+            phases_[i] += phaseInc;
             if (phases_[i] >= 1.0f) phases_[i] -= 1.0f;
 
-            // Generate sine wave
-            float wave = sinf(phases_[i] * 2.0f * M_PI);
+            // Generate sine
+            float sample = sinf(phases_[i] * 2.0f * M_PI);
 
-            // Combine all amplitude factors
-            float amp = harmonicAmp * harmonicEnvs_[i] * tremolo;
-            output += wave * amp;
+            // Accumulate
+            output += sample * ampRolloff;
+            totalAmp += ampRolloff;
         }
 
         // Normalize to prevent clipping
-        float normFactor = 1.0f + (numActive - 1) * harmonicSpread * 0.5f;
-        output /= normFactor;
-
-        // WAVEFOLD: Adds grit and extra harmonics
-        if (wavefold > 0.01f) {
-            float drive = 1.0f + wavefold * 5.0f;
-            float driven = output * drive;
-            // Triangle fold
-            while (driven > 1.0f || driven < -1.0f) {
-                if (driven > 1.0f) driven = 2.0f - driven;
-                if (driven < -1.0f) driven = -2.0f - driven;
-            }
-            output = output * (1.0f - wavefold) + driven * wavefold;
+        if (totalAmp > 1.0f) {
+            output /= totalAmp;
         }
 
-        // Apply master envelope
-        output *= masterEnv;
+        // Apply tremolo
+        output *= tremoloMult;
+
+        // Wavefold for extra harmonics/distortion
+        if (wavefold > 0.01f) {
+            float drive = 1.0f + wavefold * 4.0f;
+            float folded = output * drive;
+            // Fold back
+            while (folded > 1.0f || folded < -1.0f) {
+                if (folded > 1.0f) folded = 2.0f - folded;
+                if (folded < -1.0f) folded = -2.0f - folded;
+            }
+            output = output * (1.0f - wavefold) + folded * wavefold;
+        }
+
+        // Apply envelope
+        output *= envelope;
 
         // Soft clip
         return fastTanh(output);
@@ -132,9 +124,7 @@ public:
 
 private:
     float sampleRate_;
-    float phaseInc_;
+    float baseFreq_;
     float phases_[MAX_HARMONICS];
-    float harmonicEnvs_[MAX_HARMONICS];
-    float lfoPhase1_;
-    float lfoPhase2_;
+    float lfoPhase_;
 };

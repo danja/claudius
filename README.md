@@ -10,6 +10,12 @@ First test it immediately crashed, wrong display libs. After fixing this, second
 
 What follows was written by Claude.
 
+PS. **Lies!**
+
+The *Chaos* effect didn't sound very chaotic, so I asked :
+
+>   The README mentions a "Lorenz attractor" but that was never implemented - it's just a regular 4Hz sine wave controlling vibrato and tremolo. 
+
 ---
 
 A Eurorack synthesizer voice module for ESP32 featuring **Harmonic Cascade Synthesis** - a technique where higher harmonics decay faster than lower ones, creating naturally evolving timbres.

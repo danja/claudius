@@ -32,19 +32,14 @@ public:
         params.cv1 = 0.5f;
         params.cv2 = 0.5f;
 
-        // Smoothed values
-        float smoothPitch = 0.5f;
-        float smoothSpread = 0.5f;
-        float smoothCascade = 0.5f;
-
-        // Audio buffer (stereo interleaved: L, R, L, R, ...)
+        // Audio buffer (stereo interleaved)
         uint16_t audioBuffer[AUDIO_BLOCK_SIZE * 2];
 
         unsigned long lastStatusTime = 0;
         unsigned long lastDebugTime = 0;
 
         while (true) {
-            // Read latest parameters (non-blocking, drain queue)
+            // Read latest parameters
             while (xQueueReceive(gParamQueue, &params, 0) == pdTRUE) {
             }
 
@@ -54,26 +49,26 @@ public:
             engine_.setWavefold(params.wavefold);
             engine_.setChaos(params.chaos);
 
-            // PITCH: CV2 + Pot2
-            float pitchVal = params.pot2 + (params.cv2 - 0.5f) * 2.0f;
-            pitchVal = clamp(pitchVal, 0.0f, 1.0f);
-            smoothPitch = smoothPitch * 0.9f + pitchVal * 0.1f;
-            float freq = MIN_FREQ * powf(MAX_FREQ / MIN_FREQ, smoothPitch);
+            // DIRECT MAPPING - no smoothing, pot is the value
+            // Pot0 = Spread (0-1)
+            // Pot1 = Cascade (0-1)
+            // Pot2 = Pitch (0-1)
+            // CV adds/subtracts from pot value
+
+            float spread = params.pot0 + (params.cv0 - 0.5f);
+            spread = clamp(spread, 0.0f, 1.0f);
+            engine_.setHarmonicSpread(spread);
+
+            float cascade = params.pot1 + (params.cv1 - 0.5f);
+            cascade = clamp(cascade, 0.0f, 1.0f);
+            engine_.setCascadeRate(cascade);
+
+            float pitch = params.pot2 + (params.cv2 - 0.5f);
+            pitch = clamp(pitch, 0.0f, 1.0f);
+            float freq = MIN_FREQ * powf(MAX_FREQ / MIN_FREQ, pitch);
             engine_.setFrequency(freq);
 
-            // HARMONIC SPREAD: CV0 + Pot0
-            float spreadVal = params.pot0 + (params.cv0 - 0.5f) * 2.0f;
-            spreadVal = clamp(spreadVal, 0.0f, 1.0f);
-            smoothSpread = smoothSpread * 0.9f + spreadVal * 0.1f;
-            engine_.setHarmonicSpread(smoothSpread);
-
-            // CASCADE RATE: CV1 + Pot1
-            float cascadeVal = params.pot1 + (params.cv1 - 0.5f) * 2.0f;
-            cascadeVal = clamp(cascadeVal, 0.0f, 1.0f);
-            smoothCascade = smoothCascade * 0.9f + cascadeVal * 0.1f;
-            engine_.setCascadeRate(smoothCascade);
-
-            // Handle gate - also enable drone mode when decay is at max
+            // Drone mode when decay > 98%
             bool droneMode = (params.decay > 0.98f);
             engine_.gate(params.gateIn || droneMode);
 
@@ -92,17 +87,15 @@ public:
             // Update gate output
             gate_.setGateOut(engine_.isPlaying());
 
-            // Debug output
+            // Debug output every 1 second
             unsigned long now = millis();
-            if (now - lastDebugTime > 2000) {
-                Serial.printf("Spread:%.2f Cascade:%.2f Chaos:%.2f Freq:%.0f\n",
-                    smoothSpread, smoothCascade, params.chaos, freq);
-                Serial.printf("  CV0:%.2f CV1:%.2f Pot0:%.2f Pot1:%.2f\n",
-                    params.cv0, params.cv1, params.pot0, params.pot1);
+            if (now - lastDebugTime > 1000) {
+                Serial.printf("POT0:%.2f POT1:%.2f POT2:%.2f | Spread:%.2f Cascade:%.2f Freq:%.0f\n",
+                    params.pot0, params.pot1, params.pot2, spread, cascade, freq);
                 lastDebugTime = now;
             }
 
-            // Send status update periodically
+            // Send status update
             if (now - lastStatusTime > 100) {
                 StatusMessage status;
                 status.outputLevel = engine_.getOutputLevel();
