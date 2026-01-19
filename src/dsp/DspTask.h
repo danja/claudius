@@ -55,17 +55,19 @@ public:
             // Pot2 = Pitch (0-1)
             // CV adds/subtracts from pot value
 
-            float spread = params.pot0 + (params.cv0 - 0.5f);
+            float spread = params.pot0 + (params.cv0 - 0.5f) * 4.0f;
             spread = clamp(spread, 0.0f, 1.0f);
             engine_.setHarmonicSpread(spread);
 
-            float cascade = params.pot1 + (params.cv1 - 0.5f);
+            float cascade = params.pot1 + (params.cv1 - 0.5f) * 4.0f;
             cascade = clamp(cascade, 0.0f, 1.0f);
             engine_.setCascadeRate(cascade);
 
+            constexpr float kPitchOctaves = 5.0f;
             float pitch = params.pot2 + (params.cv2 - 0.5f);
             pitch = clamp(pitch, 0.0f, 1.0f);
-            float freq = MIN_FREQ * powf(MAX_FREQ / MIN_FREQ, pitch);
+            pitch = 1.0f - pitch;
+            float freq = MIN_FREQ * powf(2.0f, pitch * kPitchOctaves);
             engine_.setFrequency(freq);
 
             // Drone mode when decay > 98%

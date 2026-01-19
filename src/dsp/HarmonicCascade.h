@@ -9,7 +9,7 @@
 // SPREAD: Controls how many harmonics are active (1-8)
 // CASCADE: Controls relative amplitude of higher harmonics
 // WAVEFOLD: Adds distortion/harmonics
-// CHAOS: Vibrato and tremolo
+// CHAOS: Lorenz attractor modulation of harmonic amplitudes
 
 class HarmonicCascade {
 public:
@@ -24,7 +24,9 @@ public:
         for (int i = 0; i < MAX_HARMONICS; ++i) {
             phases_[i] = 0.0f;
         }
-        lfoPhase_ = 0.0f;
+        lorenzX_ = 0.1f;
+        lorenzY_ = 0.0f;
+        lorenzZ_ = 0.0f;
     }
 
     void setFrequency(float freq) {
@@ -39,17 +41,20 @@ public:
     }
 
     float process(float spread, float cascade, float wavefold, float chaos, float envelope) {
-        // LFO for chaos effects (~4 Hz)
-        lfoPhase_ += 4.0f / sampleRate_;
-        if (lfoPhase_ >= 1.0f) lfoPhase_ -= 1.0f;
-        float lfo = sinf(lfoPhase_ * 2.0f * M_PI);
+        // Lorenz attractor for chaotic modulation
+        constexpr float kSigma = 10.0f;
+        constexpr float kRho = 28.0f;
+        constexpr float kBeta = 8.0f / 3.0f;
+        float dt = 1.0f / sampleRate_;
+        float dx = kSigma * (lorenzY_ - lorenzX_);
+        float dy = lorenzX_ * (kRho - lorenzZ_) - lorenzY_;
+        float dz = lorenzX_ * lorenzY_ - kBeta * lorenzZ_;
+        lorenzX_ += dx * dt;
+        lorenzY_ += dy * dt;
+        lorenzZ_ += dz * dt;
 
-        // Vibrato: chaos controls depth (0 to ±5%)
-        float vibratoMult = 1.0f + chaos * lfo * 0.05f;
-
-        // Tremolo: chaos controls depth (0 to ±40%)
-        float tremoloMult = 1.0f + chaos * lfo * 0.4f;
-        if (tremoloMult < 0.2f) tremoloMult = 0.2f;
+        // Map chaotic state to a smooth 0-1 modulator
+        float chaosNorm = 0.5f + 0.5f * fastTanh(lorenzX_ * 0.08f + lorenzY_ * 0.03f);
 
         float output = 0.0f;
         float totalAmp = 0.0f;
@@ -76,8 +81,15 @@ public:
                 ampRolloff = equalAmp * (1.0f - cascade) + sawAmp * cascade;
             }
 
-            // Calculate frequency with vibrato
-            float freq = baseFreq_ * static_cast<float>(harmonic) * vibratoMult;
+            float chaosWeight = (numHarmonics > 1)
+                ? static_cast<float>(i) / static_cast<float>(numHarmonics - 1)
+                : 1.0f;
+            float chaosMod = 1.0f + chaos * chaosWeight * (chaosNorm - 0.5f) * 1.8f;
+            if (chaosMod < 0.15f) chaosMod = 0.15f;
+            ampRolloff *= chaosMod;
+
+            // Calculate frequency
+            float freq = baseFreq_ * static_cast<float>(harmonic);
 
             // Anti-aliasing: skip harmonics above Nyquist
             if (freq > sampleRate_ * 0.45f) continue;
@@ -99,9 +111,6 @@ public:
         if (totalAmp > 1.0f) {
             output /= totalAmp;
         }
-
-        // Apply tremolo
-        output *= tremoloMult;
 
         // Wavefold for extra harmonics/distortion
         if (wavefold > 0.01f) {
@@ -126,5 +135,7 @@ private:
     float sampleRate_;
     float baseFreq_;
     float phases_[MAX_HARMONICS];
-    float lfoPhase_;
+    float lorenzX_;
+    float lorenzY_;
+    float lorenzZ_;
 };
