@@ -1,4 +1,14 @@
-# Claudius
+# I, Claudius
+
+Designed by Claude AI after being given the requirements : write for pre-existing hardware (as built for [disyn-esp32](https://github.com/danja/disyn-esp32) make it a voice with some kind of wave generation and envelope control. And "Be creative!".
+
+[![Watch the video](https://img.youtube.com/vi/-fdHzfwwsyY/0.jpg)](https://www.youtube.com/shorts/-fdHzfwwsyY)   
+
+First test it immediately crashed, wrong display libs. After fixing this, second flash, sound came out and most things kind-of worked. 
+
+What follows was written by Claude.
+
+---
 
 A Eurorack synthesizer voice module for ESP32 featuring **Harmonic Cascade Synthesis** - a technique where higher harmonics decay faster than lower ones, creating naturally evolving timbres.
 

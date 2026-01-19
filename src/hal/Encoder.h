@@ -30,14 +30,14 @@ public:
             // Debounce: only accept if enough time has passed
             unsigned long now = millis();
             if (now - lastRotTime_ >= 2) {  // 2ms minimum between transitions
-                // Determine direction from state transition
+                // Determine direction from state transition (swapped for correct direction)
                 int transition = (lastState_ << 2) | state;
                 switch (transition) {
                     case 0b0001: case 0b0111: case 0b1110: case 0b1000:
-                        accumulator_++;
+                        accumulator_--;  // Was ++, swapped
                         break;
                     case 0b0010: case 0b1011: case 0b1101: case 0b0100:
-                        accumulator_--;
+                        accumulator_++;  // Was --, swapped
                         break;
                 }
                 lastRotTime_ = now;
@@ -45,14 +45,14 @@ public:
             lastState_ = state;
         }
 
-        // Return accumulated clicks (detent = 4 state changes)
+        // Return accumulated clicks (detent = 2 state changes for faster response)
         int8_t delta = 0;
-        if (accumulator_ >= 4) {
+        if (accumulator_ >= 2) {
             delta = 1;
-            accumulator_ -= 4;
-        } else if (accumulator_ <= -4) {
+            accumulator_ -= 2;
+        } else if (accumulator_ <= -2) {
             delta = -1;
-            accumulator_ += 4;
+            accumulator_ += 2;
         }
         return delta;
     }

@@ -129,7 +129,7 @@ public:
 
 private:
     void adjustParameter(ParamIndex param, int8_t delta) {
-        float step = 0.02f;  // 2% per click
+        float step = 0.05f;  // 5% per click for faster adjustment
         float* value = nullptr;
 
         switch (param) {

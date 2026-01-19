@@ -6,8 +6,8 @@
 
 // Claudius: Harmonic Cascade Synthesizer
 //
-// Generates multiple harmonics that decay at different rates.
-// Higher harmonics decay faster, creating evolving timbres.
+// Attempt to see the sea, but the source generates multiple harmonics.
+// Controls should be VERY obvious in their effect.
 
 class HarmonicCascade {
 public:
@@ -21,10 +21,10 @@ public:
     void reset() {
         for (int i = 0; i < MAX_HARMONICS; ++i) {
             phases_[i] = 0.0f;
-            harmonicEnvs_[i] = 1.0f;  // Start with all harmonics active
+            harmonicEnvs_[i] = 1.0f;
         }
-        chaosPhase_ = 0.0f;
-        lfoPhase_ = 0.0f;
+        lfoPhase1_ = 0.0f;
+        lfoPhase2_ = 0.0f;
     }
 
     void setFrequency(float freq) {
@@ -33,53 +33,66 @@ public:
     }
 
     void trigger() {
-        // Reset all harmonic envelopes to maximum
         for (int i = 0; i < MAX_HARMONICS; ++i) {
             harmonicEnvs_[i] = 1.0f;
         }
     }
 
-    // Process one sample
     float process(float harmonicSpread, float cascadeRate,
                   float wavefold, float chaos, float masterEnv) {
 
-        // LFO for chaos modulation (slow sine wave)
-        lfoPhase_ += 0.00005f;  // Very slow LFO ~2Hz at 44.1kHz
-        if (lfoPhase_ >= 1.0f) lfoPhase_ -= 1.0f;
-        float lfo1 = sinf(lfoPhase_ * 2.0f * M_PI);
+        // LFOs for chaos - faster rates so effect is obvious
+        // LFO1: ~5Hz vibrato
+        lfoPhase1_ += 5.0f / sampleRate_;
+        if (lfoPhase1_ >= 1.0f) lfoPhase1_ -= 1.0f;
+        float lfo1 = sinf(lfoPhase1_ * 2.0f * M_PI);
 
-        // Second LFO at different rate for complexity
-        chaosPhase_ += 0.00003f;
-        if (chaosPhase_ >= 1.0f) chaosPhase_ -= 1.0f;
-        float lfo2 = sinf(chaosPhase_ * 2.0f * M_PI * 1.618f);  // Golden ratio offset
+        // LFO2: ~3Hz tremolo
+        lfoPhase2_ += 3.0f / sampleRate_;
+        if (lfoPhase2_ >= 1.0f) lfoPhase2_ -= 1.0f;
+        float lfo2 = sinf(lfoPhase2_ * 2.0f * M_PI);
 
         float output = 0.0f;
 
-        // Calculate number of harmonics based on spread (1 to MAX_HARMONICS)
+        // SPREAD: Controls how many harmonics play
+        // spread=0: only fundamental
+        // spread=0.5: 4 harmonics
+        // spread=1: all 8 harmonics at equal volume
         int numActive = 1 + static_cast<int>(harmonicSpread * (MAX_HARMONICS - 1));
 
         for (int i = 0; i < numActive; ++i) {
             int harmonicNum = i + 1;
 
-            // Amplitude falls off with harmonic number (1/n for sawtooth-like spectrum)
-            float baseAmp = 1.0f / static_cast<float>(harmonicNum);
+            // Base amplitude - spread makes higher harmonics LOUDER
+            // At spread=0, only fundamental plays
+            // At spread=1, all harmonics are equal volume
+            float harmonicAmp;
+            if (i == 0) {
+                harmonicAmp = 1.0f;
+            } else {
+                // Higher spread = louder upper harmonics
+                harmonicAmp = harmonicSpread;
+            }
 
-            // Apply spread - higher spread means more equal harmonic levels
-            float spreadBoost = 1.0f + harmonicSpread * static_cast<float>(i) * 0.5f;
-            float harmonicAmp = baseAmp * spreadBoost;
-
-            // Apply cascade decay - higher harmonics decay faster
-            // Very slow decay so you can actually hear the effect
-            float decayRate = 0.99999f - cascadeRate * 0.00002f * static_cast<float>(i);
-            if (decayRate < 0.999f) decayRate = 0.999f;
+            // CASCADE: Higher harmonics decay faster
+            // cascade=0: no decay difference
+            // cascade=1: harmonic 8 decays 8x faster than fundamental
+            float decayRate = 0.9997f;  // Base decay ~7ms at 44.1kHz
+            if (cascadeRate > 0.01f && i > 0) {
+                // Faster decay for higher harmonics
+                float speedup = 1.0f + cascadeRate * static_cast<float>(i) * 1.5f;
+                decayRate = powf(decayRate, speedup);
+            }
             harmonicEnvs_[i] *= decayRate;
 
-            // Chaos: pitch modulation (vibrato) - more on higher harmonics
-            float vibrato = 1.0f + chaos * lfo1 * 0.02f * (1.0f + i * 0.3f);
+            // CHAOS: Vibrato (pitch wobble) - very obvious
+            // chaos=1 gives ±10% pitch modulation (wide vibrato)
+            float vibrato = 1.0f + chaos * lfo1 * 0.10f;
 
-            // Chaos: amplitude modulation (tremolo)
-            float tremolo = 1.0f + chaos * lfo2 * 0.3f;
-            if (tremolo < 0.1f) tremolo = 0.1f;
+            // CHAOS: Tremolo (volume wobble)
+            // chaos=1 gives ±50% amplitude modulation
+            float tremolo = 1.0f + chaos * lfo2 * 0.5f;
+            if (tremolo < 0.2f) tremolo = 0.2f;
 
             // Update phase
             float harmonicPhaseInc = phaseInc_ * harmonicNum * vibrato;
@@ -89,19 +102,25 @@ public:
             // Generate sine wave
             float wave = sinf(phases_[i] * 2.0f * M_PI);
 
-            // Combine amplitude factors
+            // Combine all amplitude factors
             float amp = harmonicAmp * harmonicEnvs_[i] * tremolo;
             output += wave * amp;
         }
 
-        // Normalize based on number of active harmonics
-        output /= (1.0f + numActive * 0.3f);
+        // Normalize to prevent clipping
+        float normFactor = 1.0f + (numActive - 1) * harmonicSpread * 0.5f;
+        output /= normFactor;
 
-        // Wave folding
+        // WAVEFOLD: Adds grit and extra harmonics
         if (wavefold > 0.01f) {
-            float drive = 1.0f + wavefold * 4.0f;
-            float folded = sinf(output * drive * M_PI * 0.5f);
-            output = output * (1.0f - wavefold) + folded * wavefold;
+            float drive = 1.0f + wavefold * 5.0f;
+            float driven = output * drive;
+            // Triangle fold
+            while (driven > 1.0f || driven < -1.0f) {
+                if (driven > 1.0f) driven = 2.0f - driven;
+                if (driven < -1.0f) driven = -2.0f - driven;
+            }
+            output = output * (1.0f - wavefold) + driven * wavefold;
         }
 
         // Apply master envelope
@@ -116,6 +135,6 @@ private:
     float phaseInc_;
     float phases_[MAX_HARMONICS];
     float harmonicEnvs_[MAX_HARMONICS];
-    float chaosPhase_;
-    float lfoPhase_;
+    float lfoPhase1_;
+    float lfoPhase2_;
 };
