@@ -55,11 +55,12 @@ public:
             // Pot2 = Pitch (0-1)
             // CV adds/subtracts from pot value
 
-            float spread = params.pot0 + (params.cv0 - 0.5f) * 4.0f;
+            // CV is centered at 0.5; use CV_MOD_AMOUNT to avoid hard clamping.
+            float spread = params.pot0 + (params.cv0 - 0.5f) * CV_MOD_AMOUNT;
             spread = clamp(spread, 0.0f, 1.0f);
             engine_.setHarmonicSpread(spread);
 
-            float cascade = params.pot1 + (params.cv1 - 0.5f) * 4.0f;
+            float cascade = params.pot1 + (params.cv1 - 0.5f) * CV_MOD_AMOUNT;
             cascade = clamp(cascade, 0.0f, 1.0f);
             engine_.setCascadeRate(cascade);
 
