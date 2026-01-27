@@ -2,13 +2,12 @@
 
 #include <cstdint>
 
-// Parameter indices for menu navigation
-enum class ParamIndex : uint8_t {
-    ATTACK = 0,
-    DECAY,
-    WAVEFOLD,
-    CHAOS,
-    NUM_PARAMS
+// Voice selection
+enum class VoiceType : uint8_t {
+    CASCADE = 0,
+    ORBIT_FM,
+    PITCH_VERB,
+    NUM_VOICES
 };
 
 // Parameter message for inter-core communication
@@ -18,14 +17,23 @@ struct ParamMessage {
     float decay;
     float wavefold;
     float chaos;
+    float fmFeedback;
+    float fmFold;
+    float verbMix;
+    float verbExcite;
+    uint8_t voice;
 
     // CV and pot inputs (normalized)
-    float cv0;      // Harmonic spread CV
-    float cv1;      // Cascade rate CV
+    float cv0;      // Unused (reserved for future)
+    float cv1;      // Unused (reserved for future)
     float cv2;      // Pitch CV
     float pot0;     // Harmonic spread knob
     float pot1;     // Cascade rate knob
     float pot2;     // Pitch knob
+
+    // CV pitch calibration
+    float cvPitchOffset;  // -1.0 to 1.0, added to CV
+    float cvPitchScale;   // 0.0 to 2.0, multiplier for CV
 
     // Gate state
     bool gateIn;
@@ -36,20 +44,4 @@ struct StatusMessage {
     float outputLevel;
     bool isPlaying;
     float currentFreq;
-};
-
-// Parameter metadata for display
-struct ParamInfo {
-    const char* name;
-    const char* unit;
-    float minDisplay;
-    float maxDisplay;
-    bool isTime;  // Use exponential display scaling
-};
-
-constexpr ParamInfo PARAM_INFO[] = {
-    {"Attack", "ms", 1.0f, 2000.0f, true},
-    {"Decay", "ms", 10.0f, 8000.0f, true},
-    {"Wavefold", "%", 0.0f, 100.0f, false},
-    {"Chaos", "%", 0.0f, 100.0f, false}
 };

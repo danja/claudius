@@ -30,8 +30,16 @@ public:
         params_.decay = 0.5f;
         params_.wavefold = 0.0f;
         params_.chaos = 0.0f;
+        params_.fmFeedback = 0.2f;
+        params_.fmFold = 0.0f;
+        params_.verbMix = 0.6f;
+        params_.verbExcite = 0.5f;
+        params_.voice = static_cast<uint8_t>(VoiceType::CASCADE);
+        params_.cvPitchOffset = 0.0f;
+        params_.cvPitchScale = 1.0f;
 
-        selectedParam_ = ParamIndex::ATTACK;
+        currentPage_ = MenuPage::VOICE;
+        selectedItem_ = 0;
     }
 
     void run() {
@@ -49,17 +57,12 @@ public:
 
             // Read encoder
             if (encoder_.readButtonPress()) {
-                // Cycle through parameters
-                int idx = static_cast<int>(selectedParam_) + 1;
-                if (idx >= static_cast<int>(ParamIndex::NUM_PARAMS)) {
-                    idx = 0;
-                }
-                selectedParam_ = static_cast<ParamIndex>(idx);
+                handleButtonPress();
             }
 
             int8_t rotation = encoder_.readRotation();
             if (rotation != 0) {
-                adjustParameter(selectedParam_, rotation);
+                handleRotation(rotation);
             }
 
             // Read ADCs at interval
@@ -106,13 +109,15 @@ public:
             // Update display at interval
             if (now - lastDisplayUpdate >= DISPLAY_UPDATE_MS) {
                 display_.clear();
-                display_.showTitle("CLAUDIUS");
 
-                // Show all parameters
-                for (int i = 0; i < static_cast<int>(ParamIndex::NUM_PARAMS); ++i) {
-                    float value = getParamValue(static_cast<ParamIndex>(i));
-                    bool selected = (static_cast<ParamIndex>(i) == selectedParam_);
-                    display_.showParameter(static_cast<ParamIndex>(i), value, selected);
+                char line[32];
+                formatTitleLine(line, sizeof(line));
+                display_.showMenuLine(line, 0, selectedItem_ == 0);
+
+                int itemCount = getPageItemCount(currentPage_);
+                for (int i = 0; i < itemCount; ++i) {
+                    formatMenuItem(currentPage_, i, line, sizeof(line));
+                    display_.showMenuLine(line, i + 1, selectedItem_ == (i + 1));
                 }
 
                 // Show status
@@ -128,30 +133,177 @@ public:
     }
 
 private:
-    void adjustParameter(ParamIndex param, int8_t delta) {
-        float step = 0.05f;  // 5% per click for faster adjustment
-        float* value = nullptr;
+    enum class MenuPage : uint8_t {
+        VOICE = 0,
+        SHAPE,
+        ENV,
+        PITCH,
+        NUM_PAGES
+    };
 
-        switch (param) {
-            case ParamIndex::ATTACK:   value = &params_.attack; break;
-            case ParamIndex::DECAY:    value = &params_.decay; break;
-            case ParamIndex::WAVEFOLD: value = &params_.wavefold; break;
-            case ParamIndex::CHAOS:    value = &params_.chaos; break;
-            default: return;
-        }
-
-        if (value) {
-            *value = clamp(*value + delta * step, 0.0f, 1.0f);
+    void handleButtonPress() {
+        int itemCount = getPageItemCount(currentPage_);
+        selectedItem_++;
+        if (selectedItem_ > itemCount) {
+            selectedItem_ = 0;
         }
     }
 
-    float getParamValue(ParamIndex param) const {
-        switch (param) {
-            case ParamIndex::ATTACK:   return params_.attack;
-            case ParamIndex::DECAY:    return params_.decay;
-            case ParamIndex::WAVEFOLD: return params_.wavefold;
-            case ParamIndex::CHAOS:    return params_.chaos;
-            default: return 0.0f;
+    void handleRotation(int8_t delta) {
+        if (selectedItem_ == 0) {
+            int pageCount = static_cast<int>(MenuPage::NUM_PAGES);
+            int next = static_cast<int>(currentPage_) + (delta > 0 ? 1 : -1);
+            if (next < 0) next = pageCount - 1;
+            if (next >= pageCount) next = 0;
+            currentPage_ = static_cast<MenuPage>(next);
+            return;
+        }
+
+        adjustMenuItem(currentPage_, selectedItem_ - 1, delta);
+    }
+
+    int getPageItemCount(MenuPage page) const {
+        switch (page) {
+            case MenuPage::VOICE: return 1;
+            case MenuPage::SHAPE: return 2;
+            case MenuPage::ENV: return 2;
+            case MenuPage::PITCH: return 2;
+            default: return 0;
+        }
+    }
+
+    void adjustMenuItem(MenuPage page, int itemIndex, int8_t delta) {
+        constexpr float kStep = 0.04f;
+        float step = kStep * static_cast<float>(delta);
+        VoiceType voice = static_cast<VoiceType>(params_.voice);
+
+        switch (page) {
+            case MenuPage::VOICE:
+                if (itemIndex == 0) {
+                    int voices = static_cast<int>(VoiceType::NUM_VOICES);
+                    int next = static_cast<int>(params_.voice) + (delta > 0 ? 1 : -1);
+                    if (next < 0) next = voices - 1;
+                    if (next >= voices) next = 0;
+                    params_.voice = static_cast<uint8_t>(next);
+                }
+                break;
+            case MenuPage::SHAPE:
+                if (voice == VoiceType::CASCADE) {
+                    if (itemIndex == 0) {
+                        params_.wavefold = clamp(params_.wavefold + step, 0.0f, 1.0f);
+                    } else if (itemIndex == 1) {
+                        params_.chaos = clamp(params_.chaos + step, 0.0f, 1.0f);
+                    }
+                } else if (voice == VoiceType::ORBIT_FM) {
+                    if (itemIndex == 0) {
+                        params_.fmFeedback = clamp(params_.fmFeedback + step, 0.0f, 1.0f);
+                    } else if (itemIndex == 1) {
+                        params_.fmFold = clamp(params_.fmFold + step, 0.0f, 1.0f);
+                    }
+                } else {
+                    if (itemIndex == 0) {
+                        params_.verbMix = clamp(params_.verbMix + step, 0.0f, 1.0f);
+                    } else if (itemIndex == 1) {
+                        params_.verbExcite = clamp(params_.verbExcite + step, 0.0f, 1.0f);
+                    }
+                }
+                break;
+            case MenuPage::ENV:
+                if (itemIndex == 0) {
+                    params_.attack = clamp(params_.attack + step, 0.0f, 1.0f);
+                } else if (itemIndex == 1) {
+                    params_.decay = clamp(params_.decay + step, 0.0f, 1.0f);
+                }
+                break;
+            case MenuPage::PITCH:
+                if (itemIndex == 0) {
+                    params_.cvPitchOffset = clamp(params_.cvPitchOffset + step, -1.0f, 1.0f);
+                } else if (itemIndex == 1) {
+                    params_.cvPitchScale = clamp(params_.cvPitchScale + step, 0.0f, 2.0f);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    void formatTitleLine(char* out, size_t size) const {
+        const char* title = "MENU";
+        switch (currentPage_) {
+            case MenuPage::VOICE: title = "VOICE"; break;
+            case MenuPage::SHAPE: title = "SHAPE"; break;
+            case MenuPage::ENV: title = "ENV"; break;
+            case MenuPage::PITCH: title = "PITCH CV"; break;
+            default: break;
+        }
+        snprintf(out, size, "%s < >", title);
+    }
+
+    void formatMenuItem(MenuPage page, int itemIndex, char* out, size_t size) const {
+        VoiceType voice = static_cast<VoiceType>(params_.voice);
+        switch (page) {
+            case MenuPage::VOICE:
+                if (itemIndex == 0) {
+                    const char* voiceName = (voice == VoiceType::CASCADE)
+                        ? "Cascade"
+                        : (voice == VoiceType::ORBIT_FM ? "Orbit FM" : "PitchVerb");
+                    snprintf(out, size, "Voice: %s", voiceName);
+                }
+                break;
+            case MenuPage::SHAPE:
+                if (voice == VoiceType::CASCADE) {
+                    if (itemIndex == 0) {
+                        formatPercentLine("Wavefold", params_.wavefold, out, size);
+                    } else if (itemIndex == 1) {
+                        formatPercentLine("Chaos", params_.chaos, out, size);
+                    }
+                } else if (voice == VoiceType::ORBIT_FM) {
+                    if (itemIndex == 0) {
+                        formatPercentLine("Feedback", params_.fmFeedback, out, size);
+                    } else if (itemIndex == 1) {
+                        formatPercentLine("Fold", params_.fmFold, out, size);
+                    }
+                } else {
+                    if (itemIndex == 0) {
+                        formatPercentLine("Mix", params_.verbMix, out, size);
+                    } else if (itemIndex == 1) {
+                        formatPercentLine("Excite", params_.verbExcite, out, size);
+                    }
+                }
+                break;
+            case MenuPage::ENV:
+                if (itemIndex == 0) {
+                    formatTimeLine("Attack", params_.attack, 1.0f, 2000.0f, out, size);
+                } else if (itemIndex == 1) {
+                    formatTimeLine("Decay", params_.decay, 10.0f, 8000.0f, out, size);
+                }
+                break;
+            case MenuPage::PITCH:
+                if (itemIndex == 0) {
+                    float offsetPercent = params_.cvPitchOffset * 100.0f;
+                    snprintf(out, size, "Offset: %+.0f%%", offsetPercent);
+                } else if (itemIndex == 1) {
+                    float scalePercent = params_.cvPitchScale * 100.0f;
+                    snprintf(out, size, "Scale: %.0f%%", scalePercent);
+                }
+                break;
+            default:
+                snprintf(out, size, "");
+                break;
+        }
+    }
+
+    void formatPercentLine(const char* name, float normalized, char* out, size_t size) const {
+        float value = linMap(normalized, 0.0f, 100.0f);
+        snprintf(out, size, "%s: %.0f%%", name, value);
+    }
+
+    void formatTimeLine(const char* name, float normalized, float minMs, float maxMs, char* out, size_t size) const {
+        float value = expMap(normalized, minMs, maxMs);
+        if (value >= 1000.0f) {
+            snprintf(out, size, "%s: %.1fs", name, value / 1000.0f);
+        } else {
+            snprintf(out, size, "%s: %.0fms", name, value);
         }
     }
 
@@ -161,5 +313,6 @@ private:
     Gate gate_;
 
     ParamMessage params_;
-    ParamIndex selectedParam_;
+    MenuPage currentPage_;
+    int selectedItem_;
 };

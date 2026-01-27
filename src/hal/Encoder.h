@@ -45,14 +45,14 @@ public:
             lastState_ = state;
         }
 
-        // Return accumulated clicks (detent = 2 state changes for faster response)
+        // Return accumulated clicks (detent = 4 state changes for slower response)
         int8_t delta = 0;
-        if (accumulator_ >= 2) {
+        if (accumulator_ >= 4) {
             delta = 1;
-            accumulator_ -= 2;
-        } else if (accumulator_ <= -2) {
+            accumulator_ -= 4;
+        } else if (accumulator_ <= -4) {
             delta = -1;
-            accumulator_ += 2;
+            accumulator_ += 4;
         }
         return delta;
     }

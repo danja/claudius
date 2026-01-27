@@ -31,6 +31,17 @@ public:
         params.cv0 = 0.5f;
         params.cv1 = 0.5f;
         params.cv2 = 0.5f;
+        params.voice = static_cast<uint8_t>(VoiceType::CASCADE);
+        params.attack = 0.1f;
+        params.decay = 0.5f;
+        params.wavefold = 0.0f;
+        params.chaos = 0.0f;
+        params.fmFeedback = 0.2f;
+        params.fmFold = 0.0f;
+        params.verbMix = 0.6f;
+        params.verbExcite = 0.5f;
+        params.cvPitchOffset = 0.0f;
+        params.cvPitchScale = 1.0f;
 
         // Audio buffer (stereo interleaved)
         uint16_t audioBuffer[AUDIO_BLOCK_SIZE * 2];
@@ -46,26 +57,43 @@ public:
             // Update envelope parameters
             engine_.setAttack(params.attack);
             engine_.setDecay(params.decay);
+            VoiceType voice = static_cast<VoiceType>(params.voice);
+            engine_.setVoice(voice);
+
             engine_.setWavefold(params.wavefold);
             engine_.setChaos(params.chaos);
+            engine_.setFmFeedback(params.fmFeedback);
+            engine_.setFmFold(params.fmFold);
+            engine_.setVerbMix(params.verbMix);
+            engine_.setVerbExcite(params.verbExcite);
 
             // DIRECT MAPPING - no smoothing, pot is the value
-            // Pot0 = Spread (0-1)
-            // Pot1 = Cascade (0-1)
+            // Pot0/Pot1 = voice-specific timbre controls
             // Pot2 = Pitch (0-1)
-            // CV adds/subtracts from pot value
+            // Only pitch CV is active.
 
-            // CV is centered at 0.5; use CV_MOD_AMOUNT to avoid hard clamping.
-            float spread = params.pot0 + (params.cv0 - 0.5f) * CV_MOD_AMOUNT;
-            spread = clamp(spread, 0.0f, 1.0f);
-            engine_.setHarmonicSpread(spread);
+            float spread = params.pot0;
+            float cascade = params.pot1;
+            float fmIndex = params.pot0;
+            float fmRatio = params.pot1;
+            float verbFeedback = params.pot0;
+            float verbDamp = params.pot1;
 
-            float cascade = params.pot1 + (params.cv1 - 0.5f) * CV_MOD_AMOUNT;
-            cascade = clamp(cascade, 0.0f, 1.0f);
-            engine_.setCascadeRate(cascade);
+            if (voice == VoiceType::CASCADE) {
+                engine_.setHarmonicSpread(clamp(spread, 0.0f, 1.0f));
+                engine_.setCascadeRate(clamp(cascade, 0.0f, 1.0f));
+            } else if (voice == VoiceType::ORBIT_FM) {
+                engine_.setFmIndex(clamp(fmIndex, 0.0f, 1.0f));
+                engine_.setFmRatio(clamp(fmRatio, 0.0f, 1.0f));
+            } else {
+                engine_.setVerbFeedback(clamp(verbFeedback, 0.0f, 1.0f));
+                engine_.setVerbDamp(clamp(verbDamp, 0.0f, 1.0f));
+            }
 
             constexpr float kPitchOctaves = 5.0f;
-            float pitch = params.pot2 + (params.cv2 - 0.5f);
+            // Apply CV offset and scale (hardware CV inversion handled by pitch inversion below)
+            float cvPitch = (params.cv2 - 0.5f) * params.cvPitchScale + params.cvPitchOffset;
+            float pitch = params.pot2 + cvPitch;
             pitch = clamp(pitch, 0.0f, 1.0f);
             pitch = 1.0f - pitch;
             float freq = MIN_FREQ * powf(2.0f, pitch * kPitchOctaves);
@@ -76,8 +104,15 @@ public:
             engine_.gate(params.gateIn || droneMode);
 
             // Generate audio block
+            float verbPeak = 0.0f;
             for (int i = 0; i < AUDIO_BLOCK_SIZE; ++i) {
                 float sample = engine_.process();
+                if (voice == VoiceType::PITCH_VERB) {
+                    float absSample = fabsf(sample);
+                    if (absSample > verbPeak) {
+                        verbPeak = absSample;
+                    }
+                }
                 uint16_t dacSample = AudioOutput::floatToSample(sample);
                 audioBuffer[i * 2] = dacSample;
                 audioBuffer[i * 2 + 1] = dacSample;
@@ -93,8 +128,17 @@ public:
             // Debug output every 1 second
             unsigned long now = millis();
             if (now - lastDebugTime > 1000) {
-                Serial.printf("POT0:%.2f POT1:%.2f POT2:%.2f | Spread:%.2f Cascade:%.2f Freq:%.0f\n",
-                    params.pot0, params.pot1, params.pot2, spread, cascade, freq);
+                const char* voiceName = (voice == VoiceType::CASCADE) ? "CASCADE" : (voice == VoiceType::ORBIT_FM ? "ORBIT" : "VERB");
+                Serial.printf("VOICE:%s GATE:%d POT0:%.2f POT1:%.2f POT2:%.2f | Freq:%.0f Env:%.2f\n",
+                    voiceName, params.gateIn ? 1 : 0, params.pot0, params.pot1, params.pot2, freq, engine_.getEnvelopeLevel());
+                if (voice == VoiceType::PITCH_VERB) {
+                    int c0 = 0, c1 = 0, c2 = 0, c3 = 0, ap0 = 0, ap1 = 0;
+                    engine_.getVerbDelayStats(c0, c1, c2, c3, ap0, ap1);
+                    Serial.printf("VERB fb:%.2f damp:%.2f mix:%.2f excite:%.2f | base:%.1f comb:%d/%d/%d/%d ap:%d/%d\n",
+                        params.pot0, params.pot1, params.verbMix, params.verbExcite,
+                        engine_.getVerbBaseFreq(), c0, c1, c2, c3, ap0, ap1);
+                    Serial.printf("VERB peak:%.4f\n", verbPeak);
+                }
                 lastDebugTime = now;
             }
 

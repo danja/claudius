@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Claudius is a Eurorack synthesizer voice module running on ESP32. It implements **Harmonic Cascade Synthesis** where multiple harmonics have independent decay rates.
+Claudius is a Eurorack synthesizer voice module running on ESP32. It now supports three voice algorithms (Cascade, Orbit FM, PitchVerb) selectable via the menu system.
 
 ## Architecture
 
@@ -30,6 +30,8 @@ src/
 │   ├── DspTask.h      # Audio loop, parameter handling
 │   ├── ClaudiusEngine.h  # Main synthesis orchestrator
 │   ├── HarmonicCascade.h # Core synthesis algorithm
+│   ├── OrbitFm.h       # 2-operator FM voice
+│   ├── PitchedVerb.h   # Tuned resonator voice
 │   └── Envelope.h     # AR envelope generator
 └── ui/
     └── UiTask.h       # Display, encoder, ADC polling
@@ -37,23 +39,31 @@ src/
 include/
 ├── Config.h           # Sample rate, timing constants
 ├── PinConfig.h        # ESP32 GPIO assignments
-├── Parameters.h       # Message structs, param metadata
+├── Parameters.h       # Message structs, voice selection
 └── Calibration.h      # ADC normalization
 ```
 
 ### Key Classes
 
 **ClaudiusEngine** (`src/dsp/ClaudiusEngine.h`)
-- Owns HarmonicCascade and Envelope
+- Owns HarmonicCascade, OrbitFm, PitchedVerb, and Envelope
 - `process()` returns one audio sample
 - `gate(bool)` triggers/releases envelope
-- Parameters: frequency, attack, decay, wavefold, chaos, harmonicSpread, cascadeRate
+- Parameters: frequency, attack, decay, plus per-voice controls and voice selection
 
 **HarmonicCascade** (`src/dsp/HarmonicCascade.h`)
 - 8 harmonics with independent phases and decay multipliers
 - `trigger()` resets all harmonic envelopes
-- `process(freq, spread, cascadeRate, wavefold, chaos)` generates sample
+- `process(spread, cascadeRate, wavefold, chaos, envelope)` generates sample
 - Uses Lorenz attractor for chaos modulation
+
+**OrbitFm** (`src/dsp/OrbitFm.h`)
+- 2-operator FM voice
+- Parameters: index, ratio, feedback, fold
+
+**PitchedVerb** (`src/dsp/PitchedVerb.h`)
+- Tuned comb/allpass resonator voice
+- Parameters: feedback, damp, mix, excite
 
 **Envelope** (`src/dsp/Envelope.h`)
 - Attack-Decay envelope with exponential curves
@@ -66,11 +76,10 @@ include/
 ```
 Gate In → Envelope Trigger
                 ↓
-HarmonicCascade.process()
-    ├── 8 harmonic oscillators (sine)
-    ├── Per-harmonic decay (cascade)
-    ├── Wave folder
-    └── Chaos modulation (Lorenz)
+Voice Select
+    ├── Cascade (additive harmonics + wavefold + chaos)
+    ├── Orbit FM (2-op FM + feedback + fold)
+    └── PitchVerb (tuned comb/allpass resonator)
                 ↓
          × Envelope
                 ↓
@@ -83,25 +92,30 @@ HarmonicCascade.process()
 
 ## Parameter Routing
 
-| Param | CV | Knob | Range |
-|-------|-----|------|-------|
-| Harmonic Spread | CV0 | Pot0 | 1-8 harmonics |
-| Cascade Rate | CV1 | Pot1 | 0-1 (higher = faster high-harmonic decay) |
-| Pitch | CV2 | Pot2 | 27.5-880 Hz (exponential) |
-| Attack | encoder | - | 1-2000ms |
-| Decay | encoder | - | 10-8000ms |
-| Wavefold | encoder | - | 0-100% |
-| Chaos | encoder | - | 0-100% |
+Menu system follows `docs/menu-system.md`:
+- Title line (row 0): rotate to change page, click to advance selection
+- Encoder click cycles items; rotation edits selected item
+
+Pages:
+- **VOICE**: select Cascade / Orbit FM / PitchVerb
+- **SHAPE**: per-voice parameters
+  - Cascade: Wavefold, Chaos
+  - Orbit FM: Feedback, Fold
+  - PitchVerb: Mix, Excite
+- **ENV**: Attack, Decay
+
+Pot/CV mapping:
+- Pot0/Pot1: voice-specific timbre controls (Cascade: Spread/Cascade, Orbit FM: Index/Ratio, PitchVerb: Feedback/Damp)
+- Pot2 + CV2: pitch (exponential, 27.5–880 Hz)
+- CV0/CV1 currently unused (reserved)
 
 ## Common Modifications
 
-### Adding a new encoder parameter
+### Adding a new menu parameter
 
-1. Add to `ParamIndex` enum in `Parameters.h`
-2. Add metadata to `PARAM_INFO[]` array
-3. Add field to `ParamMessage` struct
-4. Handle in `UiTask::updateParams()`
-5. Add setter in `ClaudiusEngine`
+1. Add field to `ParamMessage` in `Parameters.h`
+2. Update menu handling in `src/ui/UiTask.h`
+3. Add setter/usage in `ClaudiusEngine` and `DspTask`
 
 ### Changing harmonic count
 

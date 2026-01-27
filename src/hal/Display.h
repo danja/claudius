@@ -4,7 +4,6 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SH110X.h>
 #include "PinConfig.h"
-#include "Parameters.h"
 
 class Display {
 public:
@@ -31,41 +30,16 @@ public:
         display_.setTextSize(1);
     }
 
-    void showParameter(ParamIndex param, float normalizedValue, bool selected) {
-        const ParamInfo& info = PARAM_INFO[static_cast<int>(param)];
-
-        // Calculate display value
-        float displayVal;
-        if (info.isTime) {
-            displayVal = info.minDisplay * powf(info.maxDisplay / info.minDisplay, normalizedValue);
-        } else {
-            displayVal = info.minDisplay + normalizedValue * (info.maxDisplay - info.minDisplay);
-        }
-
-        // Format string
-        char buf[32];
-        if (info.isTime) {
-            if (displayVal >= 1000.0f) {
-                snprintf(buf, sizeof(buf), "%s: %.1fs", info.name, displayVal / 1000.0f);
-            } else {
-                snprintf(buf, sizeof(buf), "%s: %.0f%s", info.name, displayVal, info.unit);
-            }
-        } else {
-            snprintf(buf, sizeof(buf), "%s: %.0f%s", info.name, displayVal, info.unit);
-        }
-
-        // Compact layout: title 16px, params start at y=18 with 10px spacing
-        int y = 18 + static_cast<int>(param) * 10;
-
+    void showMenuLine(const char* text, int row, bool selected) {
+        int y = row * 10;
         if (selected) {
-            display_.fillRect(0, y - 1, 128, 10, SH110X_WHITE);
+            display_.fillRect(0, y, 128, 10, SH110X_WHITE);
             display_.setTextColor(SH110X_BLACK);
         } else {
             display_.setTextColor(SH110X_WHITE);
         }
-
-        display_.setCursor(2, y);
-        display_.print(buf);
+        display_.setCursor(2, y + 1);
+        display_.print(text);
         display_.setTextColor(SH110X_WHITE);
     }
 
